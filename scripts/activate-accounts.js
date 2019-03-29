@@ -144,6 +144,13 @@ async function buildTarget(account, advisorId, model, modelVersion) {
                 "model_version_id": modelVersion,
                 "percent": .98,
                 "is_locked": false
+            },
+            {
+                "sec_id": 0,
+                "model_id": null,
+                "model_version_id": null,
+                "percent": 0,
+                "is_locked": true
             }
         ],
         "suppress_trading_evaluation": true

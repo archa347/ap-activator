@@ -40,7 +40,7 @@ if (program.clientList && program.databaseId && program.integrationType && progr
         process.stdout.write(JSON.stringify(output))
     }
 } else {
-    console.log("required options: --client-list, --database-id, --integration-type");
+    console.log("required options: --client-list, --database-id, --integration-type, --advisor-id");
     process.exit(1);
 }
 

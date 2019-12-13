@@ -14,9 +14,13 @@ program
     .parse(process.argv);
 
 
-if (program.imports && program.session) {
+if (program.imports) {
     const imports = require(path.join(process.cwd(), program.imports));
     (async () => {
+        if (!program.session) {
+            program.session = await login();
+        }
+
         let clients = await importClients(imports, program.session);
 
         if (program.output) {
@@ -26,7 +30,7 @@ if (program.imports && program.session) {
         }
     })()
 } else {
-    console.error("Required arguments: --imports,  --session ");
+    console.error("Required arguments: --imports");
 }
 
 
@@ -61,3 +65,26 @@ async function importClient(client, session) {
 
 }
 
+async function login() {
+    const opts = {
+        uri: `${process.env.CORE_API_URL}/v1/auth/login?debugx=5`,
+        headers: {
+            Authorization: process.env.CORE_API_AUTHORIZATION,
+        },
+        method: "POST",
+        body: {
+            email: process.env.ADVISOR_EMAIL,
+            password: process.env.ADVISOR_PASSWORD,
+            app_id: 1
+        },
+        json: true
+    };
+
+    try {
+        let resp = await rp(opts);
+        return resp.token;
+    } catch (ex) {
+        console.error(`unable to get session`, ex.statusCode, ex.message);
+        throw ex;
+    }
+}

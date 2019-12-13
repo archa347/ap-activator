@@ -4,6 +4,7 @@ const program = require("commander");
 const rp = require("request-promise");
 const _ld = require("lodash");
 const path = require("path");
+const MySQL = require('mysql');
 
 require("dotenv").load();
 
@@ -12,17 +13,31 @@ program
     .option('--session <token>')
     .option('--model <id>')
     .option('--model-version <id>')
-    .parse(process.argv)
+    .parse(process.argv);
 
 
 let activatedClients = 0;
 
-if (program.clients && program.session && program.model && program.modelVersion) {
-    const clients = require(path.join(process.cwd(), program.clients));
 
-    activateClientsForAP(clients, program.model, program.modelVersion, program.session);
 
-    console.error(activatedClients);
+if (program.clients) {
+    (async () => {
+        if (!program.session) {
+            program.session = await login()
+        }
+
+        if (!program.model) {
+            const model = await createRandomModel(program.session);
+            program.model = model.id;
+            program.modelVersion = model.model_version.id
+        }
+
+        const clients = require(path.join(process.cwd(), program.clients));
+
+        activateClientsForAP(clients, program.model, program.modelVersion, program.session);
+
+        console.error(activatedClients);
+    })()
 } else {
     console.error("required parameters: --clients,  --session, --model, --model-version");
     process.exit(1);
@@ -52,6 +67,7 @@ async function activateClientForAP(clientId, model, modelVersion, session) {
         const account = _ld.get(portfolio, "accounts.0");
 
         if (account.is_autopilot_enabled === 1) {
+            await syncClient(clientId, session);
             return;
         }
 
@@ -60,6 +76,8 @@ async function activateClientForAP(clientId, model, modelVersion, session) {
         account.is_autopilot_enabled = 1;
 
         await updatePortfolio(portfolio, session);
+
+        await syncClient(clientId, session);
     } catch (ex) {
         console.error(`Error activating client ${clientId}: ${ex.message} `);
     }
@@ -120,7 +138,7 @@ async function updatePortfolio(portfolio, session) {
     try {
         return await rp(opts);
     } catch (ex) {
-        const msg = `Error getting portfolio ${portfolioId}: ${ex.message}`;
+        const msg = `Error getting portfolio ${portfolio.id}: ${ex.message}`;
         throw new Error(msg);
     }
 }
@@ -176,4 +194,141 @@ async function postTarget(target) {
         const msg = `Error creating target for ${target.portfolio_id}:${target.account_id} : ${ex.message}`;
         throw new Error(msg);
     }
+}
+
+async function createRandomModel(session) {
+    let randomAllocations = await generateModel(10);
+    let model = await createModel(randomAllocations, session);
+
+    while (!model.accounts[0].is_autopilot_eligible) {
+        for (let allocation in model.accounts[0].allocations) {
+            if (!allocation.eligibility[0].is_eligible) {
+                const newSec = getRandomSecurities(1)[0];
+                allocation.sec_id = newSec.sec_id;
+            }
+        }
+        model = await updateModel(model, session);
+    }
+
+    return model;
+}
+
+async function createModel(allocations, session) {
+    const opts = {
+        method: "POST",
+        uri: `${process.env.CORE_API_URL}/v1/portfolios/`,
+        headers: {
+            Authorization: process.env.CORE_API_AUTHORIZATION,
+            rsesh: session
+        },
+        body: {
+            type: "MODEL",
+            status: "active",
+            name: new Date()
+        },
+        json: true
+    };
+
+    try {
+        let resp = await rp(opts);
+        let model = await getModel(resp.id, session);
+        model.accounts = [
+            {
+                allocations: allocations
+            }
+        ]
+
+        return updateModel(model, session)
+    } catch (ex) {
+        const msg = `Error creating model: ${ex.message}`;
+        throw new Error(msg);
+    }
+}
+
+async function getModel(modelId, session) {
+    return getPortfolio(modelId, session)
+}
+
+async function updateModel(model, session) {
+    return updatePortfolio(model, session)
+}
+
+async function syncClient(clientId, rsesh) {
+    const opts = {
+        method: "GET",
+        uri: `${process.env.CORE_API_URL}/integration/sync_client_generic/${clientId}`,
+        headers: {
+            Authorization: process.env.CORE_API_AUTHORIZATION,
+            rsesh: rsesh
+        },
+        json: true
+    };
+
+    try {
+        return await rp(opts);
+    } catch (ex) {
+        const msg = `Error syncing client ${clientId} : ${ex.message}`;
+        throw new Error(msg);
+    }
+}
+
+async function login() {
+    const opts = {
+        uri: `${process.env.CORE_API_URL}/v1/auth/login`,
+        headers: {
+            Authorization: process.env.CORE_API_AUTHORIZATION,
+        },
+        method: "POST",
+        body: {
+            email: process.env.ADVISOR_EMAIL,
+            password: process.env.ADVISOR_PASSWORD,
+            app_id: 1
+        },
+        json: true
+    };
+
+    try {
+        let resp = await rp(opts);
+        return resp.token;
+    } catch (ex) {
+        console.error(`unable to get session`, ex.statusCode, ex.message);
+        throw ex;
+    }
+}
+
+async function getRandomSecurities(count) {
+    const adamConnection = MySQL.createConnection({
+        host     : process.env.ADAM_DB_HOSTNAME,
+        user     : process.env.DB_USERNAME,
+        password : process.env.DB_PASSWORD,
+        database : "riskalyze_adam"
+    });
+
+    let query = `SELECT id as sec_id, FLOOR(RAND()*(10000-1000)+1000) as amount FROM pricedata_statistics
+                    WHERE type in ('stock', 'fund', 'etf')
+                    ORDER BY RAND()
+                    LIMIT ${count}`;
+
+    return (new Promise((resolve,reject) => {
+        adamConnection.query(query,
+            (error, results) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(results);
+                }
+            });
+    })).then(results => {
+        return results.map(({sec_id, amount}) => ({sec_id, amount}))
+    }).finally(() => {
+        adamConnection.destroy();
+    })
+}
+
+async function generateModel(count) {
+    let securities = await getRandomSecurities(count);
+    let total = _ld.sumBy(securities, 'amount');
+    let cash = total / .95 * .05;
+    securities.push({sec_id: 1000000000, amount: cash});
+    return securities;
 }

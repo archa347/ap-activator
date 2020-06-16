@@ -67,9 +67,10 @@ async function importClient(client, session) {
 
 async function login() {
     const opts = {
-        uri: `${process.env.CORE_API_URL}/v1/auth/login?debugx=5`,
+        uri: `${process.env.CORE_API_URL}/v1/auth/login`,
         headers: {
             Authorization: process.env.CORE_API_AUTHORIZATION,
+            "User-Agent": "Node"
         },
         method: "POST",
         body: {

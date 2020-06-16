@@ -277,6 +277,7 @@ async function login() {
         uri: `${process.env.CORE_API_URL}/v1/auth/login`,
         headers: {
             Authorization: process.env.CORE_API_AUTHORIZATION,
+            "User-Agent": "Node",
         },
         method: "POST",
         body: {
@@ -301,6 +302,7 @@ async function getRandomSecurities(count) {
         host     : process.env.ADAM_DB_HOSTNAME,
         user     : process.env.DB_USERNAME,
         password : process.env.DB_PASSWORD,
+        port     : process.env.DB_PORT,
         database : "riskalyze_adam"
     });
 

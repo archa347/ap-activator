@@ -37,7 +37,15 @@ The `.dist` file assumes that you are port forwarding the `api` database to `loc
 We need a set of data of which clients to import from Compliance Cloud.  Two datasets are provided in this project by default,
 they are `clients200.json` and `clients1000.json`. You also need to determine the custodian slug you wish
 
-To prepare the actual imports list, you need to run the command `npm run format-clients -- --client-list ./clients1000.json --integration-type schwab --output ./imports.json`
+To prepare the actual imports list, you need to run the command `npm run format-clients`.  
+
+This command has 3 required arguments
+- `--client-list` - The path to the file which has the Compliance Cloud client ids to import
+- `--integration-type` - The custodian slug for the Compliance Cloud custodian you wish to import the clients from
+- `--output` - The path for a file to write the formatted client list to
+
+For example, to format the clients in the `clients1000.json` list, for the `schwab` custodian, writing output to the 
+`imports.json` file, the command is `npm run format-clients -- --client-list ./clients1000.json --integration-type schwab --output ./imports.json`
 
 ### Expand advisor permissions in Compliance Cloud Database
 
@@ -63,7 +71,7 @@ For whichever custodian you are using, go to the `pro_links` table for that clou
 - network access to the `api` instance
 
 ### Run the `client-import` command
-You should be able to now import the clients defined in the previous step by running this command: `npm run client-import --  --imports ./clients.json --output ./imported-clients.json`.
+You should be able to now import the clients defined in the previous step by running this command: `npm run client-import --  --imports ./imports.json --output ./imported-clients.json`.
 
 This will usually take a while.  You can check the `clients` table in `riskalyze_adam` to see the clients being added, and the `accounts` table in `riskalyze_core` to see that the accounts
 are present.
